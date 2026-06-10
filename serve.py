@@ -18,6 +18,9 @@ import sys
 import urllib.request
 
 PORT = int(sys.argv[1]) if len(sys.argv) > 1 else 8765
+# bind host: arg 2, or BEAM_DASH_HOST env, default loopback (safe).
+# use 0.0.0.0 to allow access from other machines (then open your firewall).
+HOST = (sys.argv[2] if len(sys.argv) > 2 else os.environ.get("BEAM_DASH_HOST", "127.0.0.1"))
 HERE = os.path.dirname(os.path.abspath(__file__))
 UPSTREAM = "https://data.b1m.ai"
 UA = ("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
@@ -105,9 +108,13 @@ class Server(socketserver.ThreadingMixIn, http.server.HTTPServer):
 
 if __name__ == "__main__":
     os.chdir(HERE)
-    with Server(("127.0.0.1", PORT), Handler) as httpd:
-        print(f"Subnet 105 dashboard → http://localhost:{PORT}")
+    with Server((HOST, PORT), Handler) as httpd:
+        where = "localhost" if HOST in ("127.0.0.1", "localhost") else HOST
+        print(f"Subnet 105 dashboard → http://{where}:{PORT}  (bound to {HOST}:{PORT})")
         print(f"  proxying live API from {UPSTREAM}/api/dashboard/  (Ctrl+C to stop)")
+        if HOST == "0.0.0.0":
+            print("  ⚠ bound to all interfaces — no auth; open only the firewall you need, "
+                  "or prefer an SSH tunnel.")
         try:
             httpd.serve_forever()
         except KeyboardInterrupt:
