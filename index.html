@@ -1,0 +1,507 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Subnet 105 · Orchestrator Analytics</title>
+<style>
+  :root{
+    --bg:#0b0f17; --panel:#121a27; --panel2:#0f1622; --bd:#1f2a3a; --bd2:#27344a;
+    --tx:#e6edf6; --mut:#8aa0bb; --acc:#60a5fa;
+    --qualified:#34d399; --qualifying:#fbbf24; --bad:#f87171; --good:#34d399;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;background:var(--bg);color:var(--tx);
+    font:13px/1.45 ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+  code,.mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+  a{color:var(--acc);text-decoration:none}
+  .wrap{max-width:1500px;margin:0 auto;padding:18px}
+  header{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:16px}
+  header h1{font-size:18px;margin:0;font-weight:650;letter-spacing:.2px}
+  header h1 .sub{color:var(--mut);font-weight:400;font-size:13px}
+  .badge{font-size:11px;padding:3px 8px;border-radius:999px;border:1px solid var(--bd2);
+    color:var(--mut);background:var(--panel)}
+  .badge.live{color:#86efac;border-color:#14532d;background:#0b1f14}
+  .badge.snap{color:#fde68a;border-color:#3f2d04;background:#1c1605}
+  .spacer{flex:1}
+  button{font:inherit;color:var(--tx);background:var(--panel);border:1px solid var(--bd2);
+    border-radius:8px;padding:6px 12px;cursor:pointer}
+  button:hover{border-color:var(--acc)}
+  .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(165px,1fr));gap:10px;margin-bottom:16px}
+  .card{background:var(--panel);border:1px solid var(--bd);border-radius:12px;padding:12px 14px}
+  .card .k{color:var(--mut);font-size:11px;text-transform:uppercase;letter-spacing:.5px}
+  .card .v{font-size:22px;font-weight:680;margin-top:4px}
+  .card .d{color:var(--mut);font-size:11.5px;margin-top:3px}
+  .grid{display:grid;grid-template-columns:repeat(12,1fr);gap:12px;margin-bottom:16px}
+  .panel{background:var(--panel);border:1px solid var(--bd);border-radius:12px;padding:14px}
+  .panel h3{margin:0 0 10px;font-size:12px;color:var(--mut);text-transform:uppercase;letter-spacing:.6px;font-weight:650}
+  .col4{grid-column:span 4}.col6{grid-column:span 6}.col8{grid-column:span 8}.col12{grid-column:span 12}
+  @media(max-width:1000px){.col4,.col6,.col8{grid-column:span 12}}
+  .legend{display:flex;gap:14px;flex-wrap:wrap;font-size:11.5px;color:var(--mut);margin-top:8px}
+  .dot{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:5px;vertical-align:middle}
+  /* table */
+  .controls{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px}
+  input,select{font:inherit;color:var(--tx);background:var(--panel2);border:1px solid var(--bd2);
+    border-radius:8px;padding:6px 10px}
+  input:focus,select:focus{outline:none;border-color:var(--acc)}
+  .tbl-wrap{overflow:auto;border:1px solid var(--bd);border-radius:12px;background:var(--panel)}
+  table{border-collapse:collapse;width:100%;font-size:12px;white-space:nowrap}
+  th,td{padding:7px 10px;text-align:right;border-bottom:1px solid var(--bd)}
+  th:first-child,td:first-child,th.l,td.l{text-align:left}
+  thead th{position:sticky;top:0;background:#0e1622;cursor:pointer;color:var(--mut);
+    font-weight:600;user-select:none;z-index:2}
+  thead th:hover{color:var(--tx)}
+  thead th.sorted{color:var(--acc)}
+  tbody tr{cursor:pointer}
+  tbody tr:hover{background:#15202f}
+  .pill{font-size:10.5px;padding:1px 7px;border-radius:999px;border:1px solid transparent;display:inline-block}
+  .pill.qualified{color:var(--qualified);border-color:#14532d;background:#0b1f14}
+  .pill.qualifying{color:var(--qualifying);border-color:#3f2d04;background:#1c1605}
+  .pill.on{color:#86efac}.pill.off{color:#64748b}
+  .bar{position:relative;height:13px;border-radius:3px;background:#0e1622;overflow:hidden;min-width:54px}
+  .bar>span{position:absolute;left:0;top:0;bottom:0;border-radius:3px}
+  .num{font-variant-numeric:tabular-nums}
+  .bad{color:var(--bad)} .muted{color:var(--mut)}
+  /* drawer */
+  .scrim{position:fixed;inset:0;background:rgba(2,6,14,.6);opacity:0;pointer-events:none;transition:.15s;z-index:40}
+  .scrim.open{opacity:1;pointer-events:auto}
+  .drawer{position:fixed;top:0;right:0;height:100%;width:min(560px,94vw);background:var(--panel2);
+    border-left:1px solid var(--bd2);transform:translateX(100%);transition:.18s;z-index:50;overflow:auto;padding:18px}
+  .drawer.open{transform:none}
+  .drawer h2{margin:.1em 0;font-size:17px}
+  .kv{display:grid;grid-template-columns:160px 1fr;gap:4px 12px;font-size:12.5px;margin:8px 0}
+  .kv .key{color:var(--mut)}
+  .formula{background:#0c1420;border:1px solid var(--bd);border-radius:10px;padding:12px;margin:10px 0;font-size:12.5px}
+  .formula .row{display:flex;justify-content:space-between;padding:3px 0}
+  .formula .eq{color:var(--mut)}
+  .formula .tot{border-top:1px solid var(--bd2);margin-top:6px;padding-top:6px;font-weight:680}
+  .sec{margin-top:16px;border-top:1px solid var(--bd);padding-top:12px}
+  .sec h4{margin:0 0 8px;font-size:11px;text-transform:uppercase;letter-spacing:.6px;color:var(--mut)}
+  .close{position:absolute;top:14px;right:16px}
+  .hint{color:var(--mut);font-size:12px;padding:30px;text-align:center}
+  .foot{color:var(--mut);font-size:11px;margin-top:18px;text-align:center}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Subnet 105 <span class="sub">· Orchestrator Analytics</span></h1>
+    <span id="epochBadge" class="badge">epoch —</span>
+    <span id="srcBadge" class="badge">loading…</span>
+    <div class="spacer"></div>
+    <button id="refresh">⟳ Refresh</button>
+  </header>
+
+  <div id="cards" class="cards"></div>
+
+  <div class="grid">
+    <div class="panel col4">
+      <h3>Pool distribution</h3>
+      <div id="poolChart"></div>
+    </div>
+    <div class="panel col8">
+      <h3>PRISM final score distribution</h3>
+      <div id="histChart"></div>
+      <div class="legend">
+        <span><i class="dot" style="background:var(--qualified)"></i>qualified</span>
+        <span><i class="dot" style="background:var(--qualifying)"></i>qualifying</span>
+      </div>
+    </div>
+    <div class="panel col6">
+      <h3>Throughput vs Reliability <span class="muted" style="text-transform:none">(bubble = epoch weight)</span></h3>
+      <div id="scatter"></div>
+    </div>
+    <div class="panel col6">
+      <h3>Top 15 by epoch weight %</h3>
+      <div id="topWeights"></div>
+    </div>
+    <div class="panel col6">
+      <h3>Top hosting providers <span class="muted" style="text-transform:none">(own-VPS)</span></h3>
+      <div id="providerChart"></div>
+    </div>
+    <div class="panel col6">
+      <h3>Countries / decentralization</h3>
+      <div id="countryChart"></div>
+    </div>
+    <div class="panel col12" id="penaltyPanel">
+      <h3>Penalty overview</h3>
+      <div id="penaltyBody"></div>
+    </div>
+  </div>
+
+  <div class="controls">
+    <input id="search" placeholder="search uid / hotkey / region…" style="min-width:240px"/>
+    <select id="poolFilter">
+      <option value="">all pools</option>
+      <option value="qualified">qualified</option>
+      <option value="qualifying">qualifying</option>
+    </select>
+    <select id="stateFilter">
+      <option value="">all states</option>
+      <option value="penalized">penalized only</option>
+      <option value="ready">ready only</option>
+      <option value="connected">connected only</option>
+      <option value="dedicated">dedicated gateway</option>
+      <option value="datacenter">datacenter / VPS</option>
+      <option value="residential">residential / other</option>
+      <option value="shared">shared gateway</option>
+    </select>
+    <select id="countryFilter"><option value="">all countries</option></select>
+    <span id="count" class="muted"></span>
+  </div>
+  <div class="tbl-wrap">
+    <table id="tbl">
+      <thead><tr id="thead"></tr></thead>
+      <tbody id="tbody"></tbody>
+    </table>
+  </div>
+
+  <div class="foot" id="foot"></div>
+</div>
+
+<div class="scrim" id="scrim"></div>
+<aside class="drawer" id="drawer"><button class="close" id="closeDrawer">✕</button><div id="drawerBody"></div></aside>
+
+<script>
+const $=s=>document.querySelector(s);
+const fmt={
+  n:(x,d=0)=>x==null?'—':Number(x).toLocaleString(undefined,{maximumFractionDigits:d}),
+  pct:(x,d=1)=>x==null?'—':(100*x).toFixed(d)+'%',
+  tao:nano=>nano==null?'—':(nano/1e9).toLocaleString(undefined,{maximumFractionDigits:2})+' τ',
+  bytes:b=>{if(b==null)return '—';b=Number(b);if(b<1024)return b+' B';const u=['KB','MB','GB','TB','PB'];let i=-1;do{b/=1024;i++}while(b>=1024&&i<u.length-1);return b.toFixed(1)+' '+u[i];},
+  ago:iso=>{if(!iso)return '—';const s=(Date.now()-new Date(iso))/1000;if(s<60)return Math.round(s)+'s ago';if(s<3600)return Math.round(s/60)+'m ago';if(s<86400)return Math.round(s/3600)+'h ago';return Math.round(s/86400)+'d ago';},
+  sc:x=>x==null?'—':Number(x).toFixed(4)
+};
+// color ramp red->amber->green for a 0..1 score
+function ramp(x){if(x==null)return '#475569';x=Math.max(0,Math.min(1,x));
+  const a=[248,113,113],b=[251,191,36],c=[52,211,153];let p,q,t;
+  if(x<.5){p=a;q=b;t=x/.5}else{p=b;q=c;t=(x-.5)/.5}
+  return `rgb(${p.map((v,i)=>Math.round(v+(q[i]-v)*t)).join(',')})`;}
+function bar(x,color){x=Math.max(0,Math.min(1,x||0));return `<div class="bar"><span style="width:${(x*100).toFixed(1)}%;background:${color||ramp(x)}"></span></div>`;}
+function poolPill(p){return `<span class="pill ${p}">${p||'—'}</span>`;}
+const fraudSybil=o=>Math.max(0,(o.penalty_event_count||0)-(o.failed_pop_payments||0));
+
+let STATE={data:null,rows:[],sortKey:'prism_final_score',sortDir:-1,fetched:null,source:''};
+
+async function load(){
+  $('#srcBadge').textContent='loading…';$('#srcBadge').className='badge';
+  let geo=null; try{ geo=await (await fetch('./geo.json',{cache:'no-store'})).json(); }catch(e){}
+  // try the local proxy (serve.py); fall back to bundled snapshot (data.json)
+  try{
+    const [oR,mR]=await Promise.all([fetch('/api/dashboard/orchestrators',{cache:'no-store'}),
+                                     fetch('/api/dashboard/metrics',{cache:'no-store'})]);
+    if(!oR.ok)throw new Error('orchestrators '+oR.status);
+    const orchestrators=await oR.json();
+    const metrics=mR.ok?await mR.json():null;
+    const hdr=oR.headers.get('X-Beam-Source');
+    return {orchestrators,metrics,geo,source:hdr==='snapshot'?'snapshot (server fallback)':'live',fetched:new Date().toISOString()};
+  }catch(e){
+    const snap=await (await fetch('./data.json',{cache:'no-store'})).json();
+    return {orchestrators:snap.orchestrators,metrics:snap.metrics,geo,source:'snapshot (bundled)',fetched:snap.fetched_at};
+  }
+}
+function flag(cc){return cc?cc.toUpperCase().replace(/./g,c=>String.fromCodePoint(127397+c.charCodeAt(0))):'';}
+function esc(s){return (s==null?'':String(s)).replace(/[<>&]/g,c=>({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]));}
+
+function render(){
+  const d=STATE.data, o=d.orchestrators, orch=o.orchestrators||[], cfg=o.prism_config||{}, m=d.metrics||{};
+  // merge VPS/hosting enrichment (geo.json) onto each orchestrator
+  const GEO=(d.geo&&d.geo.by_uid)||{}; STATE.geoMeta=(d.geo&&d.geo._meta)||null;
+  orch.forEach(x=>{const e=GEO[x.uid]||{};
+    x._ip=e.ip; x._country=e.country; x._cc=e.country_code; x._city=e.city; x._region=e.region;
+    x._asname=e.asname||e.isp; x._isp=e.isp; x._org=e.org; x._asn=e.asn; x._hosting=e.hosting;
+    x._proxy=e.proxy; x._mobile=e.mobile; x._reverse=e.reverse; x._shared=e.shared_gateway;});
+  // badges
+  $('#epochBadge').textContent='epoch '+fmt.n(o.weight_epoch);
+  const sb=$('#srcBadge'); sb.textContent=(STATE.source.startsWith('live')?'● live':'◌ '+STATE.source)+' · '+fmt.ago(STATE.fetched);
+  sb.className='badge '+(STATE.source.startsWith('live')?'live':'snap');
+  // derived
+  const qual=orch.filter(x=>x.prism_pool==='qualified'), qing=orch.filter(x=>x.prism_pool==='qualifying');
+  const pen=orch.filter(x=>(x.penalty_multiplier??1)<1);
+  const popTot=orch.reduce((s,x)=>s+(x.failed_pop_payments||0),0);
+  const fsTot=orch.reduce((s,x)=>s+fraudSybil(x),0);
+  const W=m.workers||{}, T=m.tasks||{}, P=m.payments||{};
+  // cards
+  const cards=[
+    ['Orchestrators',`${fmt.n(o.slotted_count)}/${fmt.n(o.subnet_uid_slots)}`,`${fmt.n(o.empty_uid_slots)} empty slots`],
+    ['Qualified',fmt.n(qual.length),`${fmt.n(qing.length)} qualifying`],
+    ['Penalized',fmt.n(pen.length),`${fmt.n(popTot)} POP · ${fmt.n(fsTot)} fraud/sybil`],
+    ['Workers active',fmt.n(W.active),`${fmt.n(W.connected)} connected · ${fmt.n(W.connected_bandwidth_mbps,0)} Mbps`],
+    ['Tasks completed',fmt.n(T.completed),`${fmt.n(T.failed)} failed · ${fmt.n(T.pending)} pending`],
+    ['Distributed',fmt.tao(P.total_distributed_nano),`${fmt.n(P.epochs_with_payments)} epochs paid`],
+  ];
+  $('#cards').innerHTML=cards.map(c=>`<div class="card"><div class="k">${c[0]}</div><div class="v">${c[1]}</div><div class="d">${c[2]}</div></div>`).join('');
+  // charts
+  poolChart(qual.length,qing.length);
+  histChart(orch);
+  scatter(orch);
+  topWeights(orch);
+  providerChart(orch);
+  countryChart(orch);
+  penaltyPanel(pen,popTot,fsTot,cfg);
+  populateCountryFilter(orch);
+  // table
+  buildTable(orch);
+}
+
+function barList(items,total,colorFn){
+  const max=Math.max(1,...items.map(i=>i[1]));
+  return items.map(([label,n,uidOpt])=>`
+    <div style="display:flex;align-items:center;gap:8px;margin:4px 0">
+      <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${label}</span>
+      <div class="bar" style="width:120px;height:14px"><span style="width:${(n/max*100).toFixed(1)}%;background:${colorFn?colorFn(label):'var(--acc)'}"></span></div>
+      <span class="mono num muted" style="width:64px;text-align:right">${n} · ${fmt.pct(n/total,0)}</span>
+    </div>`).join('');
+}
+function providerChart(orch){
+  const have=orch.filter(x=>x._asname && !x._shared);
+  const c={}; have.forEach(x=>{c[x._asname]=(c[x._asname]||0)+1;});
+  const items=Object.entries(c).sort((a,b)=>b[1]-a[1]).slice(0,12);
+  const top=items[0]?items[0][1]:0;
+  $('#providerChart').innerHTML=
+    `<div class="muted" style="font-size:11.5px;margin-bottom:6px">${have.length} orchestrators on own VPS · top provider holds ${fmt.pct(top/have.length,0)}</div>`+
+    (items.length?barList(items.map(i=>[esc(i[0]),i[1]]),have.length):'<div class="muted">no provider data — run geo.py</div>');
+}
+function countryChart(orch){
+  const have=orch.filter(x=>x._country && !x._shared);
+  const c={}; have.forEach(x=>{const k=(x._cc||'')+'|'+x._country;c[k]=(c[k]||0)+1;});
+  const items=Object.entries(c).sort((a,b)=>b[1]-a[1]).slice(0,10)
+    .map(([k,n])=>{const[cc,name]=k.split('|');return[`${flag(cc)} ${esc(name)}`,n];});
+  const dc=have.filter(x=>x._hosting).length;
+  $('#countryChart').innerHTML=
+    `<div class="muted" style="font-size:11.5px;margin-bottom:6px">${dc}/${have.length} on flagged datacenters/VPS · ${have.length-dc} residential/other</div>`+
+    (items.length?barList(items,have.length,()=>'var(--qualified)'):'<div class="muted">no geo data — run geo.py</div>');
+}
+function populateCountryFilter(orch){
+  const sel=$('#countryFilter'); if(sel.dataset.filled)return;
+  const ccs=[...new Set(orch.map(x=>x._cc).filter(Boolean))].sort();
+  sel.innerHTML='<option value="">all countries</option>'+ccs.map(cc=>`<option value="${cc}">${flag(cc)} ${cc}</option>`).join('');
+  sel.dataset.filled='1';
+}
+
+function poolChart(q,g){
+  const tot=q+g||1, r=52, c=2*Math.PI*r, qf=q/tot;
+  $('#poolChart').innerHTML=`
+  <div style="display:flex;align-items:center;gap:16px">
+    <svg width="140" height="140" viewBox="0 0 140 140">
+      <circle cx="70" cy="70" r="${r}" fill="none" stroke="#1c2738" stroke-width="18"/>
+      <circle cx="70" cy="70" r="${r}" fill="none" stroke="var(--qualified)" stroke-width="18"
+        stroke-dasharray="${(c*qf).toFixed(1)} ${c.toFixed(1)}" transform="rotate(-90 70 70)" stroke-linecap="butt"/>
+      <text x="70" y="66" text-anchor="middle" fill="#e6edf6" font-size="20" font-weight="700">${q+g}</text>
+      <text x="70" y="84" text-anchor="middle" fill="#8aa0bb" font-size="10">orchestrators</text>
+    </svg>
+    <div>
+      <div style="margin:6px 0"><span class="dot" style="background:var(--qualified)"></span><b>${q}</b> qualified <span class="muted">(${fmt.pct(qf)})</span></div>
+      <div style="margin:6px 0"><span class="dot" style="background:var(--qualifying)"></span><b>${g}</b> qualifying <span class="muted">(${fmt.pct(1-qf)})</span></div>
+    </div>
+  </div>`;
+}
+
+function histChart(orch){
+  const B=10, buckets=Array.from({length:B},()=>({q:0,g:0}));
+  orch.forEach(o=>{let i=Math.min(B-1,Math.floor((o.prism_final_score||0)*B));
+    if(o.prism_pool==='qualified')buckets[i].q++;else buckets[i].g++;});
+  const max=Math.max(1,...buckets.map(b=>b.q+b.g));
+  const W=560,H=170,pad=24,bw=(W-pad*2)/B;
+  let bars='';
+  buckets.forEach((b,i)=>{const x=pad+i*bw, tot=b.q+b.g;
+    const hQ=(b.q/max)*(H-pad*2), hG=(b.g/max)*(H-pad*2);
+    const yG=H-pad-hG, yQ=yG-hQ;
+    bars+=`<rect x="${x+3}" y="${yG}" width="${bw-6}" height="${hG}" fill="var(--qualifying)"/>`;
+    bars+=`<rect x="${x+3}" y="${yQ}" width="${bw-6}" height="${hQ}" fill="var(--qualified)"/>`;
+    if(tot)bars+=`<text x="${x+bw/2}" y="${yQ-4}" text-anchor="middle" fill="#8aa0bb" font-size="10">${tot}</text>`;
+    bars+=`<text x="${x+bw/2}" y="${H-7}" text-anchor="middle" fill="#64748b" font-size="9">${(i/B).toFixed(1)}</text>`;
+  });
+  $('#histChart').innerHTML=`<svg width="100%" viewBox="0 0 ${W} ${H}">${bars}<line x1="${pad}" y1="${H-pad}" x2="${W-pad}" y2="${H-pad}" stroke="#27344a"/></svg>`;
+}
+
+function scatter(orch){
+  const W=520,H=300,pad=36;
+  const px=v=>pad+v*(W-pad*2), py=v=>H-pad-v*(H-pad*2);
+  let g='';
+  for(let t=0;t<=1.0001;t+=.25){g+=`<line x1="${px(t)}" y1="${pad}" x2="${px(t)}" y2="${H-pad}" stroke="#16202e"/><line x1="${pad}" y1="${py(t)}" x2="${W-pad}" y2="${py(t)}" stroke="#16202e"/>
+    <text x="${px(t)}" y="${H-pad+13}" text-anchor="middle" fill="#64748b" font-size="9">${t}</text>
+    <text x="${pad-6}" y="${py(t)+3}" text-anchor="end" fill="#64748b" font-size="9">${t}</text>`;}
+  const dots=orch.map(o=>{const wt=o.epoch_weight_pct||0;const r=Math.max(2.5,Math.min(13,Math.sqrt(wt)*4+2.5));
+    const col=o.prism_pool==='qualified'?'var(--qualified)':'var(--qualifying)';
+    return `<circle data-uid="${o.uid}" cx="${px(o.throughput_score||0).toFixed(1)}" cy="${py(o.reliability_score||0).toFixed(1)}" r="${r.toFixed(1)}" fill="${col}" fill-opacity="0.55" stroke="${col}" stroke-width="0.7"><title>UID ${o.uid} · ${o.prism_pool}\nthroughput ${fmt.sc(o.throughput_score)} · reliability ${fmt.sc(o.reliability_score)}\nfinal ${fmt.sc(o.prism_final_score)} · weight ${fmt.pct((o.epoch_weight_pct||0)/100,2)}</title></circle>`;}).join('');
+  $('#scatter').innerHTML=`<svg width="100%" viewBox="0 0 ${W} ${H}">${g}${dots}
+    <text x="${W/2}" y="${H-4}" text-anchor="middle" fill="#8aa0bb" font-size="10">throughput score →</text>
+    <text x="11" y="${H/2}" text-anchor="middle" fill="#8aa0bb" font-size="10" transform="rotate(-90 11 ${H/2})">reliability score →</text></svg>`;
+  $('#scatter').querySelectorAll('circle[data-uid]').forEach(c=>c.style.cursor='pointer');
+  $('#scatter').addEventListener('click',e=>{const u=e.target.getAttribute&&e.target.getAttribute('data-uid');if(u)openDrawer(+u);});
+}
+
+function topWeights(orch){
+  const top=[...orch].filter(o=>o.epoch_weight_pct>0).sort((a,b)=>b.epoch_weight_pct-a.epoch_weight_pct).slice(0,15);
+  const max=Math.max(...top.map(o=>o.epoch_weight_pct),0.0001);
+  $('#topWeights').innerHTML=top.map(o=>`
+    <div style="display:flex;align-items:center;gap:8px;margin:5px 0;cursor:pointer" onclick="openDrawer(${o.uid})">
+      <span class="mono muted" style="width:42px;text-align:right">#${o.uid}</span>
+      <div class="bar" style="flex:1;height:15px"><span style="width:${(o.epoch_weight_pct/max*100).toFixed(1)}%;background:${o.prism_pool==='qualified'?'var(--qualified)':'var(--qualifying)'}"></span></div>
+      <span class="mono num" style="width:54px;text-align:right">${o.epoch_weight_pct.toFixed(3)}%</span>
+    </div>`).join('')||'<div class="muted">no weights this epoch</div>';
+}
+
+function penaltyPanel(pen,popTot,fsTot,cfg){
+  const rows=[...pen].sort((a,b)=>(a.penalty_multiplier??1)-(b.penalty_multiplier??1));
+  const html=`
+  <div style="display:flex;gap:24px;flex-wrap:wrap;align-items:center;margin-bottom:10px">
+    <div><span class="muted">penalized orchestrators</span><br><b style="font-size:18px">${pen.length}</b></div>
+    <div><span class="muted">POP events</span><br><b style="font-size:18px">${fmt.n(popTot)}</b></div>
+    <div><span class="muted">fraud / sybil events</span><br><b style="font-size:18px;color:${fsTot>0?'var(--bad)':'inherit'}">${fmt.n(fsTot)}</b></div>
+    <div class="muted" style="font-size:11.5px;max-width:430px">penalty coeff pop/fraud/sybil = ${cfg.penalty_coeff_pop} · half-life ${cfg.half_life_hours}h · floor ${cfg.fleet_normalization_floor}. <i>fraud/sybil = total events − failed POP payments.</i></div>
+  </div>`;
+  const tbl=rows.length?`<div class="tbl-wrap"><table><thead><tr>
+    <th class="l">UID</th><th class="l">pool</th><th>penalty ×</th><th>events</th><th>POP</th><th>fraud/sybil</th><th>task fail 7d</th><th>guardrail</th></tr></thead>
+    <tbody>${rows.map(o=>`<tr onclick="openDrawer(${o.uid})"><td class="l mono">#${o.uid}</td><td class="l">${poolPill(o.prism_pool)}</td>
+      <td class="num" style="color:${ramp(o.penalty_multiplier)}">${fmt.sc(o.penalty_multiplier)}</td>
+      <td class="num">${fmt.n(o.penalty_event_count)}</td><td class="num">${fmt.n(o.failed_pop_payments)}</td>
+      <td class="num ${fraudSybil(o)>0?'bad':''}">${fmt.n(fraudSybil(o))}</td>
+      <td class="num">${fmt.n(o.task_failures_7d)}</td><td class="num">${fmt.n(o.guardrail_interventions)}</td></tr>`).join('')}</tbody></table></div>`
+    :'<div class="muted">no penalties recorded this epoch</div>';
+  $('#penaltyBody').innerHTML=html+tbl;
+}
+
+// ---------- main table ----------
+const COLS=[
+  ['uid','UID','l',o=>'#'+o.uid],
+  ['prism_pool','Pool','l',o=>poolPill(o.prism_pool)],
+  ['region','Region','l',o=>o.region||'—'],
+  ['gateway_mode_label','Gateway','l',o=>`<span class="muted">${o.gateway_mode_label||'—'}</span>`],
+  ['_cc','Geo','l',o=>o._cc?`${flag(o._cc)} <span class="muted">${esc(o._city||o._cc)}</span>`:'<span class="muted">—</span>'],
+  ['_asname','Provider','l',o=>o._asname?`<span class="muted">${esc(o._asname)}</span>${o._hosting?' <span class="pill" style="color:#7dd3fc;border-color:#0c4a6e;background:#082031">DC</span>':''}`:(o._shared?'<span class="muted">shared gw</span>':'<span class="muted">—</span>')],
+  ['ready','State','l',o=>`<span class="pill ${o.ready?'on':'off'}">${o.ready?'ready':'idle'}</span> <span class="pill ${o.connected?'on':'off'}">${o.connected?'conn':'off'}</span>`],
+  ['prism_final_score','Final','r',o=>`<div style="display:flex;gap:6px;align-items:center;justify-content:flex-end">${bar(o.prism_final_score)}<span class="num" style="width:46px">${fmt.sc(o.prism_final_score)}</span></div>`],
+  ['throughput_score','Thru','r',o=>`<span class="num" style="color:${ramp(o.throughput_score)}">${fmt.sc(o.throughput_score)}</span>`],
+  ['reliability_score','Rel','r',o=>`<span class="num" style="color:${ramp(o.reliability_score)}">${fmt.sc(o.reliability_score)}</span>`],
+  ['performance_score','Perf','r',o=>`<span class="num">${fmt.sc(o.performance_score)}</span>`],
+  ['readiness_multiplier','Rdy×','r',o=>`<span class="num" style="color:${o.readiness_multiplier?'var(--good)':'var(--bad)'}">${fmt.sc(o.readiness_multiplier)}</span>`],
+  ['penalty_multiplier','Pen×','r',o=>`<span class="num" style="color:${ramp(o.penalty_multiplier)}">${fmt.sc(o.penalty_multiplier)}</span>`],
+  ['confidence_score','Conf','r',o=>`<span class="num" style="color:${(o.confidence_score>=0.9)?'var(--good)':'var(--mut)'}">${fmt.sc(o.confidence_score)}</span>`],
+  ['verified_task_count','Tasks7d','r',o=>fmt.n(o.verified_task_count)],
+  ['verified_bandwidth_mbps','BW','r',o=>fmt.n(o.verified_bandwidth_mbps,0)],
+  ['epoch_weight_pct','Weight%','r',o=>`<span class="num">${(o.epoch_weight_pct||0).toFixed(3)}</span>`],
+];
+function buildTable(orch){
+  $('#thead').innerHTML=COLS.map(c=>`<th class="${c[2]==='l'?'l':''} ${STATE.sortKey===c[0]?'sorted':''}" data-k="${c[0]}">${c[1]}${STATE.sortKey===c[0]?(STATE.sortDir<0?' ▾':' ▴'):''}</th>`).join('');
+  $('#thead').querySelectorAll('th').forEach(th=>th.onclick=()=>{const k=th.dataset.k;
+    if(STATE.sortKey===k)STATE.sortDir*=-1;else{STATE.sortKey=k;STATE.sortDir=-1;}applyTable();});
+  applyTable();
+}
+function applyTable(){
+  const orch=STATE.data.orchestrators.orchestrators||[];
+  const q=$('#search').value.trim().toLowerCase(), pf=$('#poolFilter').value, sf=$('#stateFilter').value, cf=$('#countryFilter').value;
+  let rows=orch.filter(o=>{
+    if(pf&&o.prism_pool!==pf)return false;
+    if(cf&&o._cc!==cf)return false;
+    if(sf==='penalized'&&(o.penalty_multiplier??1)>=1)return false;
+    if(sf==='ready'&&!o.ready)return false;
+    if(sf==='connected'&&!o.connected)return false;
+    if(sf==='dedicated'&&o.gateway_resolved_type!=='orch_owned')return false;
+    if(sf==='datacenter'&&!o._hosting)return false;
+    if(sf==='residential'&&o._hosting!==false)return false;
+    if(sf==='shared'&&!o._shared)return false;
+    if(q){const hay=(o.uid+' '+(o.hotkey||'')+' '+(o.region||'')+' '+(o.name||'')+' '+(o._asname||'')+' '+(o._country||'')+' '+(o._ip||'')+' '+(o._city||'')).toLowerCase();if(!hay.includes(q))return false;}
+    return true;
+  });
+  const k=STATE.sortKey,dir=STATE.sortDir;
+  rows.sort((a,b)=>{let va=a[k],vb=b[k];
+    if(typeof va==='string'||typeof vb==='string'){va=(va??'')+'';vb=(vb??'')+'';return (va<vb?-1:va>vb?1:0)*dir;}
+    return (((va??-1e9)-(vb??-1e9)))*dir;});
+  $('#count').textContent=`${rows.length} of ${orch.length}`;
+  $('#tbody').innerHTML=rows.map(o=>`<tr onclick="openDrawer(${o.uid})">${COLS.map(c=>`<td class="${c[2]==='l'?'l':''}">${c[3](o)}</td>`).join('')}</tr>`).join('');
+}
+
+// ---------- drawer ----------
+function openDrawer(uid){
+  const o=(STATE.data.orchestrators.orchestrators||[]).find(x=>x.uid===uid);if(!o)return;
+  const cfg=STATE.data.orchestrators.prism_config||{};
+  const T=o.throughput_score||0,R=o.reliability_score||0,wT=cfg.performance_throughput_weight??0.4,wR=cfg.performance_reliability_weight??0.6;
+  const perf=o.performance_score, rdy=o.readiness_multiplier, pen=o.penalty_multiplier, fin=o.prism_final_score;
+  const fs=fraudSybil(o), grad=cfg.graduation_confidence??0.9;
+  const kv=(k,v)=>`<div class="key">${k}</div><div>${v}</div>`;
+  $('#drawerBody').innerHTML=`
+    <h2>UID ${o.uid} ${poolPill(o.prism_pool)}</h2>
+    <div class="muted mono" style="word-break:break-all;font-size:11.5px">${o.hotkey||''}</div>
+    <div class="kv" style="margin-top:12px">
+      ${kv('region',o.region||'—')}
+      ${kv('status',`${o.status} · ${o.ready?'ready':'idle'} · ${o.connected?'connected':'offline'}`)}
+      ${kv('gateway',`${o.gateway_mode_label||'—'} <span class="muted mono">${o.gateway_url_short||''}</span>`)}
+      ${kv('age',`${fmt.n(o.age_days,1)} d`)}
+      ${kv('last seen',fmt.ago(o.last_seen))}
+    </div>
+
+    ${o._ip?`<div class="sec"><h4>Hosting / VPS</h4>
+    <div class="kv">
+      ${kv('IP',`<span class="mono">${esc(o._ip)}</span>${o._shared?' <span class="pill qualifying">shared gw</span>':o._hosting?' <span class="pill" style="color:#7dd3fc;border-color:#0c4a6e;background:#082031">datacenter</span>':o._hosting===false?' <span class="pill off">residential</span>':''}`)}
+      ${kv('provider',esc(o._asname||o._isp||'—'))}
+      ${kv('ASN',`<span class="mono">${esc(o._asn||'—')}</span>`)}
+      ${kv('org',esc(o._org||'—'))}
+      ${kv('location',(o._cc?flag(o._cc)+' ':'')+esc([o._city,o._region,o._country].filter(Boolean).join(', ')||'—'))}
+      ${kv('reverse DNS',`<span class="mono" style="font-size:11px">${esc(o._reverse||'—')}</span>`)}
+      ${(o._proxy||o._mobile)?kv('flags',[o._proxy?'proxy/VPN':'',o._mobile?'mobile':''].filter(Boolean).join(' · ')):''}
+    </div>${o._shared?`<div class="muted" style="font-size:11px">BeamCore's shared worker gateway — not the operator's own server.</div>`:''}</div>`:''}
+
+    <div class="sec"><h4>PRISM final score</h4>
+    <div class="formula">
+      <div class="row"><span>throughput ${fmt.sc(T)} × ${wT}</span><span class="num">${(T*wT).toFixed(4)}</span></div>
+      <div class="row"><span>reliability ${fmt.sc(R)} × ${wR}</span><span class="num">${(R*wR).toFixed(4)}</span></div>
+      <div class="row tot"><span>= performance</span><span class="num">${fmt.sc(perf)}</span></div>
+      <div class="row" style="margin-top:8px"><span class="eq">performance ${fmt.sc(perf)}</span><span></span></div>
+      <div class="row"><span class="eq">× readiness</span><span class="num" style="color:${rdy?'var(--good)':'var(--bad)'}">${fmt.sc(rdy)}</span></div>
+      <div class="row"><span class="eq">× penalty</span><span class="num" style="color:${ramp(pen)}">${fmt.sc(pen)}</span></div>
+      <div class="row tot"><span>= prism_final_score</span><span class="num" style="color:${ramp(fin)}">${fmt.sc(fin)}</span></div>
+    </div></div>
+
+    <div class="sec"><h4>Confidence (graduation gate)</h4>
+    <div class="kv">
+      ${kv('confidence',`<b style="color:${o.confidence_score>=grad?'var(--good)':'var(--mut)'}">${fmt.sc(o.confidence_score)}</b> / ${grad} to graduate`)}
+      ${kv('verified tasks (7d)',`${fmt.n(o.verified_task_count)} / ${cfg.verified_task_target} target`)}
+      ${kv('verified transfers',fmt.n(o.verified_transfer_count))}
+      ${kv('success rate',fmt.pct(o.success_rate))}
+      ${kv('lifetime tasks',fmt.n(o.lifetime_verified_task_count))}
+    </div></div>
+
+    <div class="sec"><h4>Penalties</h4>
+    <div class="kv">
+      ${kv('penalty ×',`<span style="color:${ramp(pen)}">${fmt.sc(pen)}</span>`)}
+      ${kv('total events',fmt.n(o.penalty_event_count))}
+      ${kv('POP (failed payments)',fmt.n(o.failed_pop_payments))}
+      ${kv('fraud / sybil',`<span class="${fs>0?'bad':''}">${fmt.n(fs)}</span>`)}
+      ${kv('task failures 7d',fmt.n(o.task_failures_7d))}
+      ${kv('guardrail interventions',fmt.n(o.guardrail_interventions))}
+      ${kv('pending payments',fmt.n(o.pending_task_payments))}
+    </div></div>
+
+    <div class="sec"><h4>Routing & weight</h4>
+    <div class="kv">
+      ${kv('epoch weight',`<b>${(o.epoch_weight_pct||0).toFixed(4)}%</b>`)}
+      ${kv('raw / normalized',`${fmt.n(o.epoch_raw_weight,4)} / ${fmt.n(o.epoch_normalized_weight,6)}`)}
+      ${kv('routing applied',fmt.sc(o.routing_applied_score))}
+      ${kv('routing computed',fmt.sc(o.routing_computed_final_score))}
+      ${kv('override',o.routing_override_reason||'—')}
+      ${kv('verified bandwidth',fmt.n(o.verified_bandwidth_mbps,1)+' Mbps')}
+      ${kv('bytes transferred',fmt.bytes(o.total_bytes_transferred))}
+      ${kv('workers',fmt.n(o.worker_count))}
+      ${kv('stake',fmt.n(o.stake_tao,2)+' τ')}
+    </div></div>`;
+  $('#scrim').classList.add('open');$('#drawer').classList.add('open');
+}
+function closeDrawer(){$('#scrim').classList.remove('open');$('#drawer').classList.remove('open');}
+window.openDrawer=openDrawer;
+
+// ---------- wire ----------
+async function refresh(){
+  try{const d=await load();STATE.data=d;STATE.source=d.source;STATE.fetched=d.fetched;render();
+    $('#foot').textContent=`data via ${d.source} · BeamCore dashboard API (data.b1m.ai) · ${(d.orchestrators.orchestrators||[]).length} orchestrators`;}
+  catch(e){document.querySelector('.wrap').insertAdjacentHTML('beforeend',
+    `<div class="hint">Could not load data.<br><br>Run the local server:&nbsp; <code>python3 serve.py</code> &nbsp;then open <code>http://localhost:8765</code><br><span class="muted">(${e.message})</span></div>`);}
+}
+['#search','#poolFilter','#stateFilter','#countryFilter'].forEach(s=>$(s).addEventListener('input',()=>{if(STATE.data)applyTable();}));
+$('#refresh').onclick=refresh;$('#closeDrawer').onclick=closeDrawer;$('#scrim').onclick=closeDrawer;
+document.addEventListener('keydown',e=>{if(e.key==='Escape')closeDrawer();});
+refresh();
+</script>
+</body>
+</html>
