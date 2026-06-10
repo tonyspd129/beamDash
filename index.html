@@ -127,6 +127,10 @@
       <h3>Traffic <span class="muted" style="text-transform:none">(verified task/transfer volume — byte totals aren't exposed by the API)</span></h3>
       <div id="trafficBody"></div>
     </div>
+    <div class="panel col12">
+      <h3>Peak traffic times <span class="muted" style="text-transform:none">(from the tracked time-series — run track.py to build it)</span></h3>
+      <div id="trafficTime"></div>
+    </div>
     <div class="panel col12" id="penaltyPanel">
       <h3>Penalty overview</h3>
       <div id="penaltyBody"></div>
@@ -246,6 +250,7 @@ function render(){
   providerChart(orch);
   countryChart(orch);
   trafficBody(orch);
+  trafficTime();
   penaltyPanel(pen,popTot,fsTot,cfg);
   populateCountryFilter(orch);
   // table
@@ -263,11 +268,11 @@ function barList(items,total,colorFn){
 }
 // ---- traffic (time-series from traffic.jsonl) ----
 function attachTraffic(orch,text){
-  STATE.traffic={samples:0,spanH:0};
+  STATE.traffic={samples:0,spanH:0}; STATE.trafficLines=[];
   if(!text) return;
   const lines=text.trim().split('\n').map(l=>{try{return JSON.parse(l)}catch(e){return null}}).filter(Boolean);
   if(!lines.length) return;
-  STATE.traffic.samples=lines.length;
+  STATE.trafficLines=lines; STATE.traffic.samples=lines.length;
   const t0=Date.parse(lines[0].ts), t1=Date.parse(lines[lines.length-1].ts);
   STATE.traffic.spanH=(t1-t0)/3.6e6;
   const series={};  // uid -> [[t_ms, lifetime_tasks], ...]
@@ -314,6 +319,45 @@ function trafficBody(orch){
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
       <div><div class="muted" style="font-size:11.5px;margin-bottom:4px">Top by 7-day verified tasks</div>${rows(byTasks,o=>o.verified_task_count||0,'')}</div>
       <div><div class="muted" style="font-size:11.5px;margin-bottom:4px">${haveRate?'Top by tasks/hour (tracked)':'Top by lifetime tasks'}</div>${rows(right,haveRate?(o=>o._rate||0):(o=>o.lifetime_verified_task_count||0),haveRate?' /hr':'')}</div>
+    </div>`;
+}
+function svgBars(vals,{w=560,h=150,labels=null,hi=-1}={}){
+  const max=Math.max(1,...vals),pad=22,n=vals.length||1,bw=(w-pad*2)/n;
+  let s='';
+  vals.forEach((v,i)=>{const bh=(v/max)*(h-pad*2),x=pad+i*bw,y=h-pad-bh;
+    s+=`<rect x="${(x+1.5).toFixed(1)}" y="${y.toFixed(1)}" width="${Math.max(1,bw-3).toFixed(1)}" height="${Math.max(0,bh).toFixed(1)}" fill="${i===hi?'var(--acc)':'#2b3a52'}"/>`;
+    if(labels&&labels[i]!=='' &&labels[i]!=null)s+=`<text x="${(x+bw/2).toFixed(1)}" y="${h-7}" text-anchor="middle" fill="#64748b" font-size="9">${labels[i]}</text>`;});
+  return `<svg width="100%" viewBox="0 0 ${w} ${h}">${s}<line x1="${pad}" y1="${h-pad}" x2="${w-pad}" y2="${h-pad}" stroke="#27344a"/></svg>`;
+}
+function trafficTime(){
+  const el=$('#trafficTime'); if(!el)return;
+  const S=STATE.trafficLines||[];
+  if(S.length<2){el.innerHTML=`<div class="muted" style="padding:6px 0">Peak-time analysis needs a traffic time-series — currently <b>${S.length}</b> sample${S.length===1?'':'s'}. Run <code>python3 track.py --loop 600</code> (or cron every 10&nbsp;min) and keep it running; daily peaks emerge after ~24h.</div>`;return;}
+  // per-interval network task rate, bucketed by hour-of-day (UTC)
+  const ints=[];
+  for(let i=1;i<S.length;i++){const a=S[i-1],b=S[i],t0=Date.parse(a.ts),t1=Date.parse(b.ts),dtH=(t1-t0)/3.6e6;
+    if(dtH<=0)continue; let nd=0; for(const u in b.d){const pa=a.d[u]; if(pa)nd+=Math.max(0,b.d[u][1]-pa[1]);}
+    ints.push({t1,dtH,nd,rate:nd/dtH,hour:new Date((t0+t1)/2).getUTCHours()});}
+  if(!ints.length){el.innerHTML='<div class="muted">samples too close together — no usable intervals yet.</div>';return;}
+  const hb=Array.from({length:24},()=>({nd:0,h:0}));
+  ints.forEach(x=>{hb[x.hour].nd+=x.nd;hb[x.hour].h+=x.dtH;});
+  const hourRate=hb.map(b=>b.h>0?b.nd/b.h:0);
+  const peakH=hourRate.indexOf(Math.max(...hourRate));
+  const totH=ints.reduce((s,x)=>s+x.dtH,0),totN=ints.reduce((s,x)=>s+x.nd,0);
+  const covered=hb.filter(b=>b.h>0).length;
+  const tl=ints.slice(-72);
+  el.innerHTML=`
+    <div style="display:flex;gap:26px;flex-wrap:wrap;align-items:center;margin-bottom:8px">
+      <div><span class="muted">tracked window</span><br><b style="font-size:16px">${totH.toFixed(1)} h</b> · ${S.length} samples</div>
+      <div><span class="muted">tasks in window</span><br><b style="font-size:16px">${fmt.n(totN)}</b> <span class="muted">(${fmt.n(totN/(totH||1),0)}/hr avg)</span></div>
+      <div><span class="muted">peak hour (UTC)</span><br><b style="font-size:16px;color:var(--acc)">${String(peakH).padStart(2,'0')}:00</b> <span class="muted">· ${fmt.n(hourRate[peakH],0)}/hr</span></div>
+      <div class="muted" style="font-size:11.5px;max-width:260px">${covered}/24 clock-hours observed${covered<24?' — keep tracking for a full daily profile':''}</div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:18px">
+      <div><div class="muted" style="font-size:11.5px;margin-bottom:4px">Avg tasks/hour by hour of day (UTC) — peak highlighted</div>
+        ${svgBars(hourRate,{labels:hourRate.map((_,i)=>i%3===0?String(i):''),hi:peakH})}</div>
+      <div><div class="muted" style="font-size:11.5px;margin-bottom:4px">Network tasks/hour over time (last ${tl.length} intervals)</div>
+        ${svgBars(tl.map(x=>x.rate),{labels:tl.map((x,i)=>i%6===0?new Date(x.t1).toISOString().slice(11,16):'')})}</div>
     </div>`;
 }
 function providerChart(orch){
@@ -442,7 +486,9 @@ const COLS=[
   ['readiness_multiplier','Rdy×','r',o=>`<span class="num" style="color:${o.readiness_multiplier?'var(--good)':'var(--bad)'}">${fmt.sc(o.readiness_multiplier)}</span>`],
   ['penalty_multiplier','Pen×','r',o=>`<span class="num" style="color:${ramp(o.penalty_multiplier)}">${fmt.sc(o.penalty_multiplier)}</span>`],
   ['confidence_score','Conf','r',o=>`<span class="num" style="color:${(o.confidence_score>=0.9)?'var(--good)':'var(--mut)'}">${fmt.sc(o.confidence_score)}</span>`],
+  ['lifetime_verified_task_count','Total',  'r',o=>`<span class="num">${fmt.n(o.lifetime_verified_task_count)}</span>`],
   ['verified_task_count','Tasks7d','r',o=>fmt.n(o.verified_task_count)],
+  ['verified_transfer_count','Xfer7d','r',o=>fmt.n(o.verified_transfer_count)],
   ['verified_bandwidth_mbps','BW','r',o=>fmt.n(o.verified_bandwidth_mbps,0)],
   ['_rate','T/hr','r',o=>o._rate==null?'<span class="muted">—</span>':`<span class="num">${fmt.n(o._rate,1)}</span>`],
   ['epoch_weight_pct','Weight%','r',o=>`<span class="num">${(o.epoch_weight_pct||0).toFixed(3)}</span>`],
