@@ -123,6 +123,10 @@
       <h3>Countries / decentralization</h3>
       <div id="countryChart"></div>
     </div>
+    <div class="panel col12">
+      <h3>Traffic <span class="muted" style="text-transform:none">(verified task/transfer volume — byte totals aren't exposed by the API)</span></h3>
+      <div id="trafficBody"></div>
+    </div>
     <div class="panel col12" id="penaltyPanel">
       <h3>Penalty overview</h3>
       <div id="penaltyBody"></div>
@@ -186,6 +190,7 @@ let STATE={data:null,rows:[],sortKey:'prism_final_score',sortDir:-1,fetched:null
 async function load(){
   $('#srcBadge').textContent='loading…';$('#srcBadge').className='badge';
   let geo=null; try{ geo=await (await fetch('./geo.json',{cache:'no-store'})).json(); }catch(e){}
+  let traffic=null; try{ traffic=await (await fetch('./traffic.jsonl',{cache:'no-store'})).text(); }catch(e){}
   // try the local proxy (serve.py); fall back to bundled snapshot (data.json)
   try{
     const [oR,mR]=await Promise.all([fetch('/api/dashboard/orchestrators',{cache:'no-store'}),
@@ -194,10 +199,10 @@ async function load(){
     const orchestrators=await oR.json();
     const metrics=mR.ok?await mR.json():null;
     const hdr=oR.headers.get('X-Beam-Source');
-    return {orchestrators,metrics,geo,source:hdr==='snapshot'?'snapshot (server fallback)':'live',fetched:new Date().toISOString()};
+    return {orchestrators,metrics,geo,traffic,source:hdr==='snapshot'?'snapshot (server fallback)':'live',fetched:new Date().toISOString()};
   }catch(e){
     const snap=await (await fetch('./data.json',{cache:'no-store'})).json();
-    return {orchestrators:snap.orchestrators,metrics:snap.metrics,geo,source:'snapshot (bundled)',fetched:snap.fetched_at};
+    return {orchestrators:snap.orchestrators,metrics:snap.metrics,geo,traffic,source:'snapshot (bundled)',fetched:snap.fetched_at};
   }
 }
 function flag(cc){return cc?cc.toUpperCase().replace(/./g,c=>String.fromCodePoint(127397+c.charCodeAt(0))):'';}
@@ -211,6 +216,8 @@ function render(){
     x._ip=e.ip; x._country=e.country; x._cc=e.country_code; x._city=e.city; x._region=e.region;
     x._asname=e.asname||e.isp; x._isp=e.isp; x._org=e.org; x._asn=e.asn; x._hosting=e.hosting;
     x._proxy=e.proxy; x._mobile=e.mobile; x._reverse=e.reverse; x._shared=e.shared_gateway;});
+  // merge traffic time-series (traffic.jsonl) → per-orchestrator rate + sparkline
+  attachTraffic(orch,d.traffic);
   // badges
   $('#epochBadge').textContent='epoch '+fmt.n(o.weight_epoch);
   const sb=$('#srcBadge'); sb.textContent=(STATE.source.startsWith('live')?'● live':'◌ '+STATE.source)+' · '+fmt.ago(STATE.fetched);
@@ -238,6 +245,7 @@ function render(){
   topWeights(orch);
   providerChart(orch);
   countryChart(orch);
+  trafficBody(orch);
   penaltyPanel(pen,popTot,fsTot,cfg);
   populateCountryFilter(orch);
   // table
@@ -252,6 +260,61 @@ function barList(items,total,colorFn){
       <div class="bar" style="width:120px;height:14px"><span style="width:${(n/max*100).toFixed(1)}%;background:${colorFn?colorFn(label):'var(--acc)'}"></span></div>
       <span class="mono num muted" style="width:64px;text-align:right">${n} · ${fmt.pct(n/total,0)}</span>
     </div>`).join('');
+}
+// ---- traffic (time-series from traffic.jsonl) ----
+function attachTraffic(orch,text){
+  STATE.traffic={samples:0,spanH:0};
+  if(!text) return;
+  const lines=text.trim().split('\n').map(l=>{try{return JSON.parse(l)}catch(e){return null}}).filter(Boolean);
+  if(!lines.length) return;
+  STATE.traffic.samples=lines.length;
+  const t0=Date.parse(lines[0].ts), t1=Date.parse(lines[lines.length-1].ts);
+  STATE.traffic.spanH=(t1-t0)/3.6e6;
+  const series={};  // uid -> [[t_ms, lifetime_tasks], ...]
+  lines.forEach(l=>{const t=Date.parse(l.ts);for(const u in l.d){(series[u]=series[u]||[]).push([t,l.d[u][1]]);}});
+  const spanOK=(t1-t0)>=120000;  // need ≥2min between first/last to trust a rate
+  orch.forEach(o=>{const s=series[o.uid];o._series=null;o._rate=null;
+    if(s&&s.length>=2){
+      o._series=s.map(x=>x[1]);
+      if(spanOK){const a=s[0],b=s[s.length-1],dh=(b[0]-a[0])/3.6e6;
+        if(dh>0)o._rate=(b[1]-a[1])/dh;}  // lifetime tasks per hour (monotonic → clean)
+    }});
+}
+function sparkline(arr,w=170,h=30){
+  if(!arr||arr.length<2)return '<span class="muted">collecting…</span>';
+  const min=Math.min(...arr),max=Math.max(...arr),rng=(max-min)||1;
+  const pts=arr.map((v,i)=>`${(i/(arr.length-1)*w).toFixed(1)},${(h-2-((v-min)/rng)*(h-5)).toFixed(1)}`).join(' ');
+  return `<svg width="${w}" height="${h}" style="vertical-align:middle"><polyline points="${pts}" fill="none" stroke="var(--acc)" stroke-width="1.5"/></svg>`;
+}
+function trafficBody(orch){
+  const tr=STATE.traffic||{samples:0,spanH:0};
+  const totVT=orch.reduce((s,o)=>s+(o.verified_task_count||0),0);
+  const totTR=orch.reduce((s,o)=>s+(o.verified_transfer_count||0),0);
+  const totLT=orch.reduce((s,o)=>s+(o.lifetime_verified_task_count||0),0);
+  const haveRate=orch.some(o=>o._rate!=null);
+  const note = tr.samples<2
+    ? `rate: collecting — ${tr.samples||0} sample${tr.samples===1?'':'s'}. Run <code>track.py</code> on an interval (e.g. cron every 10 min).`
+    : !haveRate ? `rate: samples &lt;2 min apart — need spaced polls.`
+    : `rate over ${tr.spanH.toFixed(1)}h · ${tr.samples} samples`;
+  const rows=(list,valFn,unit)=>{const max=Math.max(1,...list.map(valFn));
+    return list.map(o=>`<div onclick="openDrawer(${o.uid})" style="display:flex;align-items:center;gap:8px;margin:4px 0;cursor:pointer">
+      <span class="mono muted" style="width:40px;text-align:right">#${o.uid}</span>
+      <div class="bar" style="flex:1;height:14px"><span style="width:${(valFn(o)/max*100).toFixed(1)}%;background:${o.prism_pool==='qualified'?'var(--qualified)':'var(--qualifying)'}"></span></div>
+      <span class="mono num" style="width:78px;text-align:right">${fmt.n(valFn(o),unit==='/hr'?1:0)}${unit||''}</span></div>`).join('');};
+  const byTasks=[...orch].sort((a,b)=>(b.verified_task_count||0)-(a.verified_task_count||0)).slice(0,12);
+  const right=haveRate?[...orch].filter(o=>o._rate!=null).sort((a,b)=>b._rate-a._rate).slice(0,12)
+                      :[...orch].sort((a,b)=>(b.lifetime_verified_task_count||0)-(a.lifetime_verified_task_count||0)).slice(0,12);
+  $('#trafficBody').innerHTML=`
+    <div style="display:flex;gap:24px;flex-wrap:wrap;align-items:center;margin-bottom:10px">
+      <div><span class="muted">7-day verified tasks</span><br><b style="font-size:18px">${fmt.n(totVT)}</b></div>
+      <div><span class="muted">7-day transfers</span><br><b style="font-size:18px">${fmt.n(totTR)}</b></div>
+      <div><span class="muted">lifetime tasks</span><br><b style="font-size:18px">${fmt.n(totLT)}</b></div>
+      <div class="muted" style="font-size:11.5px;max-width:360px">${note}</div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
+      <div><div class="muted" style="font-size:11.5px;margin-bottom:4px">Top by 7-day verified tasks</div>${rows(byTasks,o=>o.verified_task_count||0,'')}</div>
+      <div><div class="muted" style="font-size:11.5px;margin-bottom:4px">${haveRate?'Top by tasks/hour (tracked)':'Top by lifetime tasks'}</div>${rows(right,haveRate?(o=>o._rate||0):(o=>o.lifetime_verified_task_count||0),haveRate?' /hr':'')}</div>
+    </div>`;
 }
 function providerChart(orch){
   const have=orch.filter(x=>x._asname && !x._shared);
@@ -381,6 +444,7 @@ const COLS=[
   ['confidence_score','Conf','r',o=>`<span class="num" style="color:${(o.confidence_score>=0.9)?'var(--good)':'var(--mut)'}">${fmt.sc(o.confidence_score)}</span>`],
   ['verified_task_count','Tasks7d','r',o=>fmt.n(o.verified_task_count)],
   ['verified_bandwidth_mbps','BW','r',o=>fmt.n(o.verified_bandwidth_mbps,0)],
+  ['_rate','T/hr','r',o=>o._rate==null?'<span class="muted">—</span>':`<span class="num">${fmt.n(o._rate,1)}</span>`],
   ['epoch_weight_pct','Weight%','r',o=>`<span class="num">${(o.epoch_weight_pct||0).toFixed(3)}</span>`],
 ];
 function buildTable(orch){
@@ -474,6 +538,15 @@ function openDrawer(uid){
       ${kv('pending payments',fmt.n(o.pending_task_payments))}
     </div></div>
 
+    <div class="sec"><h4>Traffic</h4>
+    <div class="kv">
+      ${kv('verified bandwidth',fmt.n(o.verified_bandwidth_mbps,1)+' Mbps')}
+      ${kv('7-day tasks / transfers',`${fmt.n(o.verified_task_count)} / ${fmt.n(o.verified_transfer_count)}`)}
+      ${kv('lifetime tasks',fmt.n(o.lifetime_verified_task_count))}
+      ${kv('tasks / hour',o._rate==null?'<span class="muted">collecting… (run track.py)</span>':`<b>${fmt.n(o._rate,1)}</b> /hr`)}
+      ${kv('trend (lifetime)',sparkline(o._series))}
+    </div></div>
+
     <div class="sec"><h4>Routing & weight</h4>
     <div class="kv">
       ${kv('epoch weight',`<b>${(o.epoch_weight_pct||0).toFixed(4)}%</b>`)}
@@ -481,9 +554,7 @@ function openDrawer(uid){
       ${kv('routing applied',fmt.sc(o.routing_applied_score))}
       ${kv('routing computed',fmt.sc(o.routing_computed_final_score))}
       ${kv('override',o.routing_override_reason||'—')}
-      ${kv('verified bandwidth',fmt.n(o.verified_bandwidth_mbps,1)+' Mbps')}
-      ${kv('bytes transferred',fmt.bytes(o.total_bytes_transferred))}
-      ${kv('workers',fmt.n(o.worker_count))}
+      ${kv('workers',o._shared?`${fmt.n(o.worker_count)} <span class="muted">(shared pool)</span>`:'<span class="muted">own gateway — not reported</span>')}
       ${kv('stake',fmt.n(o.stake_tao,2)+' τ')}
     </div></div>`;
   $('#scrim').classList.add('open');$('#drawer').classList.add('open');

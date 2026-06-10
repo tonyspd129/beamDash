@@ -29,6 +29,26 @@ orchestrators' gateway IPs are public (already on data.b1m.ai). The 15
 "Shared"-gateway orchestrators point at BeamCore's gateway, not their own host,
 and are flagged. Re-run `geo.py` to refresh as orchestrators change.
 
+### Traffic tracking (per-orchestrator rate over time)
+
+The API exposes only *cumulative* counts (and `total_bytes_transferred` is 0 — byte
+volume isn't published), so traffic is measured in verified **tasks/transfers**, and a
+real **rate** requires sampling over time:
+
+```bash
+python3 track.py               # one poll → append to traffic.jsonl  (for cron)
+python3 track.py --loop 600     # poll every 600s until Ctrl+C
+python3 track.py --local        # read data.json instead of fetching live
+```
+
+Each poll appends one compact line to `traffic.jsonl`. The dashboard diffs the first
+and last samples to show **Δ tasks/hour** (column + drawer) and a lifetime sparkline.
+Until two samples ≥2 min apart exist it shows "collecting…". Run it on a schedule:
+
+```cron
+*/10 * * * * cd /path/to/dashboard && python3 track.py >> track.log 2>&1
+```
+
 > Opening `index.html` directly via `file://` will fall back to the bundled
 > `data.json` snapshot, but most browsers block `file://` fetches — use the server.
 
@@ -65,7 +85,9 @@ Custom port: `python3 serve.py 9000`.
 | `index.html` | The dashboard (vanilla JS, no dependencies, hand-rolled SVG charts) |
 | `serve.py`   | Static server + BeamCore API proxy (Python stdlib) |
 | `geo.py`     | VPS/hosting enrichment — resolves gateway IPs + geolocates → `geo.json` |
+| `track.py`   | Traffic poller — appends per-orchestrator volume snapshots → `traffic.jsonl` |
 | `data.json`  | Offline snapshot fallback (auto-refreshed by the server) |
+| `traffic.jsonl` | Append-only traffic time-series (one line per poll; for tasks/hr + sparkline) |
 | `geo.json`   | VPS/hosting data keyed by UID (refresh with `geo.py`) |
 
 ## Notes
